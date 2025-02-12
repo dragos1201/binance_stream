@@ -16,7 +16,7 @@ def fetch_new_trades(since_ms):
         supabase.table('trades')
         .select('*')
         .gt('event_time', since_ms)
-        .order('event_time', asc=True)
+        .order('event_time', desc=False)
         .execute()
     )
     return pd.DataFrame(response.data)
@@ -32,7 +32,7 @@ selected_coin = st.selectbox('Select Coin Pair', ['BTCUSDT', 'ETHUSDT', 'SOLUSDT
 if 'trade_data' not in st.session_state:
     st.session_state['trade_data'] = pd.DataFrame()
 if 'last_fetched_time' not in st.session_state:
-    st.session_state['last_fetched_time'] = int((datetime.datetime.utcnow() - datetime.timedelta(minutes=15)).timestamp() * 1000)
+    st.session_state['last_fetched_time'] = int((datetime.datetime.now(datetime.UTC) - datetime.timedelta(minutes=15)).timestamp() * 1000)
 
 # Fetch new data
 new_data = fetch_new_trades(st.session_state['last_fetched_time'])
