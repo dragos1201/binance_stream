@@ -3,12 +3,12 @@ import pandas as pd
 import streamlit as st
 from supabase import create_client, Client
 import datetime
-import time
 
 # Supabase credentials (use secrets in production)
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
 
 # Fetch trades from Supabase after a certain timestamp
 def fetch_new_trades(since_ms):
@@ -21,7 +21,8 @@ def fetch_new_trades(since_ms):
     )
     return pd.DataFrame(response.data)
 
-# Initialize Streamlit App
+
+# Streamlit App
 st.title('Incremental Real-Time Binance Dashboard')
 
 # Select coin
@@ -31,37 +32,30 @@ selected_coin = st.selectbox('Select Coin Pair', ['BTCUSDT', 'ETHUSDT', 'SOLUSDT
 if 'trade_data' not in st.session_state:
     st.session_state['trade_data'] = pd.DataFrame()
 if 'last_fetched_time' not in st.session_state:
-    # Start with 15 min ago as initial
     st.session_state['last_fetched_time'] = int((datetime.datetime.utcnow() - datetime.timedelta(minutes=15)).timestamp() * 1000)
 
-# Visualization placeholders
-chart_placeholder = st.empty()
-bar_placeholder = st.empty()
-data_placeholder = st.empty()
+# Fetch new data
+new_data = fetch_new_trades(st.session_state['last_fetched_time'])
 
-while True:
-    # Fetch only new trades since last_fetched_time
-    new_data = fetch_new_trades(st.session_state['last_fetched_time'])
+if not new_data.empty:
+    st.session_state['last_fetched_time'] = new_data['event_time'].max()
+    st.session_state['trade_data'] = pd.concat([st.session_state['trade_data'], new_data], ignore_index=True)
 
-    if not new_data.empty:
-        # Update the last_fetched_time to the latest event_time
-        st.session_state['last_fetched_time'] = new_data['event_time'].max()
+# Filter data for selected coin
+coin_df = st.session_state['trade_data']
+coin_df = coin_df[coin_df['coin'] == selected_coin]
 
-        # Append new data to session state dataframe
-        st.session_state['trade_data'] = pd.concat([st.session_state['trade_data'], new_data], ignore_index=True)
+if not coin_df.empty:
+    coin_df['event_time'] = pd.to_datetime(coin_df['event_time'], unit='ms')
 
-    # Filter by selected coin
-    coin_df = st.session_state['trade_data']
-    coin_df = coin_df[coin_df['coin'] == selected_coin]
+    st.line_chart(coin_df[['event_time', 'price']].set_index('event_time'))
+    st.bar_chart(coin_df[['event_time', 'quantity']].set_index('event_time'))
+    st.dataframe(coin_df.tail(10))
 
-    if not coin_df.empty:
-        coin_df['event_time'] = pd.to_datetime(coin_df['event_time'], unit='ms')
-
-        # Plotting
-        chart_placeholder.line_chart(coin_df[['event_time', 'price']].set_index('event_time'))
-        bar_placeholder.bar_chart(coin_df[['event_time', 'quantity']].set_index('event_time'))
-
-        # Show last few trades
-        data_placeholder.dataframe(coin_df.tail(10))
-
-    time.sleep(5)  # Refresh every 5 seconds
+# Auto-refresh every 5 seconds
+st.markdown(
+    f"""
+    <meta http-equiv="refresh" content="5">
+    """,
+    unsafe_allow_html=True,
+)
