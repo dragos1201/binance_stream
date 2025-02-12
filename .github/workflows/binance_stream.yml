@@ -19,7 +19,8 @@ jobs:
           python-version: "3.9"
 
       - name: Install Dependencies
-        run: pip install websockets duckdb
+        run: pip install websockets supabase
+
 
       - name: Run Binance WebSocket
         run: python binance_stream.py
