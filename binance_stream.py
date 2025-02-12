@@ -1,55 +1,40 @@
 import asyncio
-import websockets
 import json
-import duckdb
+import websockets
+from supabase import create_client, Client
 import os
-from datetime import datetime
-import subprocess
 
-# Database file (stored in repo)
-DB_FILE = "binance_data.db"
+# Supabase credentials
+SUPABASE_URL = "https://kaqrvnymypgcwpggiimk.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImthcXJ2bnlteXBnY3dwZ2dpaW1rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzkzNzg4OTcsImV4cCI6MjA1NDk1NDg5N30.gumJhTdyq6wgIgt2Qu2cm5ArfRbJaUEUyWUZtJZ3Dgk"
 
-# Connect to DuckDB
-conn = duckdb.connect(DB_FILE)
+# Initialize Supabase client
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Create table if it doesn't exist
-conn.execute("""
-    CREATE TABLE IF NOT EXISTS trades (
-        coin STRING,
-        event_time TIMESTAMP,
-        price FLOAT,
-        quantity FLOAT
-    )
-""")
+# Binance WebSocket URL
+SOCKET = "wss://stream.binance.com:9443/ws/btcusdt@trade"
 
-async def fetch_binance_trades():
-    url = "wss://stream.binance.com:9443/ws/btcusdt@trade"
-    
-    async with websockets.connect(url) as ws:
+async def binance_websocket():
+    async with websockets.connect(SOCKET) as ws:
         while True:
-            message = await ws.recv()
-            data = json.loads(message)
-            
-            trade = (
-                "BTCUSDT",
-                datetime.utcfromtimestamp(data["T"] / 1000),  # Convert ms to timestamp
-                float(data["p"]),
-                float(data["q"])
-            )
-            
-            # Insert into DuckDB
-            conn.execute("INSERT INTO trades VALUES (?, ?, ?, ?)", trade)
-            conn.commit()  # Save data
-            
-            # Commit updated database to GitHub
-            commit_to_github()
+            try:
+                message = await ws.recv()
+                data = json.loads(message)
 
-def commit_to_github():
-    """Commits and pushes the updated DuckDB file to the repository."""
-    os.system("git config --global user.name 'github-actions'")
-    os.system("git config --global user.email 'actions@github.com'")
-    os.system("git add binance_data.db")
-    os.system("git commit -m 'Update trade data'")
-    os.system("git push")
+                # Extract trade data
+                trade = {
+                    "coin": "BTCUSDT",
+                    "event_time": data["T"],
+                    "price": float(data["p"]),
+                    "quantity": float(data["q"]),
+                }
 
-asyncio.run(fetch_binance_trades())
+                # Insert into Supabase
+                response = supabase.table("trades").insert(trade).execute()
+                print("Inserted:", response)
+
+            except Exception as e:
+                print("Error:", e)
+                break
+
+asyncio.run(binance_websocket())
