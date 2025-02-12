@@ -25,7 +25,6 @@ if 'last_fetched_time' not in st.session_state:
     )
 
 # Fetch trades from Supabase after a certain timestamp
-@st.cache_data(ttl=5)  # Cache for 5 seconds
 def fetch_new_trades(since_ms):
     response = (
         supabase.table('trades')
@@ -50,7 +49,7 @@ if not new_data.empty:
 
 # Filter data for the selected coin
 coin_df = st.session_state['trade_data']
-coin_df = coin_df[coin_df['coin'] == selected_coin]
+coin_df = coin_df[coin_df['coin'] == selected_coin].copy()
 
 if not coin_df.empty:
     coin_df['event_time'] = pd.to_datetime(coin_df['event_time'], unit='ms')
@@ -62,7 +61,19 @@ if not coin_df.empty:
 else:
     st.warning(f"No trade data available for {selected_coin}")
 
-# Auto-refresh the app every 5 seconds
-st.write("Refreshing in 5 seconds...")
-st.experimental_sleep(5)
-st.rerun()
+# Auto-refresh frontend every 5 seconds using JavaScript
+st.write(
+    """
+    <script>
+    function reloadPage() {
+        setTimeout(function() {
+            window.location.reload();
+        }, 5000);
+    }
+    reloadPage();
+    </script>
+    """,
+    unsafe_allow_html=True
+)
+
+st.write("Refreshing every 5 seconds...")
