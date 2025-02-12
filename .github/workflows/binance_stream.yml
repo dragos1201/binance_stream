@@ -19,7 +19,8 @@ jobs:
           python-version: "3.9"
 
       - name: Install Dependencies
-        run: pip install websockets supabase
+        run: pip install psycopg2 websockets
+
 
 
       - name: Run Binance WebSocket
