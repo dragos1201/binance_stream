@@ -1,24 +1,67 @@
-import streamlit as st
-import duckdb
 import os
-import urllib.request
+import pandas as pd
+import streamlit as st
+from supabase import create_client, Client
+import datetime
+import time
 
-# GitHub raw URL for DuckDB database (replace YOUR_USERNAME)
-GITHUB_DB_URL = "https://raw.githubusercontent.com/YOUR_USERNAME/binance-stream/main/binance_data.db"
+# Supabase credentials (use secrets in production)
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Download database file (if it doesn't exist)
-if not os.path.exists("binance_data.db"):
-    urllib.request.urlretrieve(GITHUB_DB_URL, "binance_data.db")
+# Fetch trades from Supabase after a certain timestamp
+def fetch_new_trades(since_ms):
+    response = (
+        supabase.table('trades')
+        .select('*')
+        .gt('event_time', since_ms)
+        .order('event_time', asc=True)
+        .execute()
+    )
+    return pd.DataFrame(response.data)
 
-# Connect to DuckDB
-conn = duckdb.connect("binance_data.db")
+# Initialize Streamlit App
+st.title('Incremental Real-Time Binance Dashboard')
 
-st.title("📈 Binance Real-Time Trade Data")
+# Select coin
+selected_coin = st.selectbox('Select Coin Pair', ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'])
 
-# Fetch latest trades
-df = conn.execute("SELECT * FROM trades ORDER BY event_time DESC LIMIT 20").fetchdf()
+# Initialize session state for data storage
+if 'trade_data' not in st.session_state:
+    st.session_state['trade_data'] = pd.DataFrame()
+if 'last_fetched_time' not in st.session_state:
+    # Start with 15 min ago as initial
+    st.session_state['last_fetched_time'] = int((datetime.datetime.utcnow() - datetime.timedelta(minutes=15)).timestamp() * 1000)
 
-st.dataframe(df)
+# Visualization placeholders
+chart_placeholder = st.empty()
+bar_placeholder = st.empty()
+data_placeholder = st.empty()
 
-# Line chart for price movement
-st.line_chart(df.set_index("event_time")["price"])
+while True:
+    # Fetch only new trades since last_fetched_time
+    new_data = fetch_new_trades(st.session_state['last_fetched_time'])
+
+    if not new_data.empty:
+        # Update the last_fetched_time to the latest event_time
+        st.session_state['last_fetched_time'] = new_data['event_time'].max()
+
+        # Append new data to session state dataframe
+        st.session_state['trade_data'] = pd.concat([st.session_state['trade_data'], new_data], ignore_index=True)
+
+    # Filter by selected coin
+    coin_df = st.session_state['trade_data']
+    coin_df = coin_df[coin_df['coin'] == selected_coin]
+
+    if not coin_df.empty:
+        coin_df['event_time'] = pd.to_datetime(coin_df['event_time'], unit='ms')
+
+        # Plotting
+        chart_placeholder.line_chart(coin_df[['event_time', 'price']].set_index('event_time'))
+        bar_placeholder.bar_chart(coin_df[['event_time', 'quantity']].set_index('event_time'))
+
+        # Show last few trades
+        data_placeholder.dataframe(coin_df.tail(10))
+
+    time.sleep(5)  # Refresh every 5 seconds
