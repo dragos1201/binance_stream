@@ -3,7 +3,6 @@ import pandas as pd
 import streamlit as st
 from supabase import create_client, Client
 import datetime
-import time
 
 # Supabase credentials (better to set these in Streamlit Secrets for production)
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -26,7 +25,7 @@ if 'last_fetched_time' not in st.session_state:
     )
 
 # Fetch trades from Supabase after a certain timestamp
-@st.cache_data(ttl=5)  # Cache for 5 seconds to reduce Supabase calls
+@st.cache_data(ttl=5)  # Cache for 5 seconds
 def fetch_new_trades(since_ms):
     response = (
         supabase.table('trades')
@@ -64,4 +63,6 @@ else:
     st.warning(f"No trade data available for {selected_coin}")
 
 # Auto-refresh the app every 5 seconds
-st.experimental_rerun()
+st.write("Refreshing in 5 seconds...")
+st.experimental_sleep(5)
+st.rerun()
