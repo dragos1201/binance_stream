@@ -69,7 +69,15 @@ def fetch_new_data(since_timestamp):
     return new_df
 
 # ==============================
-# Step 3 - Live Plotting
+# Step 3 - User Control for Auto-Scrolling / Free Mode
+# ==============================
+live_mode = st.toggle("Live Mode (Scroll with Data)", value=True)
+
+# Allow user to pick "last N minutes" window for convenience
+window_minutes = st.slider("Show Last N Minutes", 1, 60, 10)
+
+# ==============================
+# Step 4 - Live Plotting
 # ==============================
 while True:
     # Fetch new data since the last timestamp
@@ -93,24 +101,32 @@ while True:
         line=dict(color='royalblue', width=2)
     ))
 
+    # Plotting
     fig.update_layout(
         title=f"Live Price Chart - {coin_pair}",
         xaxis_title="Time",
         yaxis_title="Price",
-        xaxis_rangeslider_visible=True,  # Enable x-axis scrolling
         template="plotly_dark",
         height=500,
         hovermode="x unified",
+        xaxis_rangeslider_visible=True,
     )
 
-    # Allow free zooming on both axes
-    fig.update_layout(
-        xaxis=dict(fixedrange=False),  # Allow zoom/pan
-        yaxis=dict(fixedrange=False)   # Allow zoom/pan
-    )
+    # Adjust Y-axis for zooming
+    fig.update_yaxes(fixedrange=False)
 
-    # Display chart without resetting zoom on every refresh
+    # Manage X-axis live view or custom view
+    if live_mode:
+        # Show only the last N minutes in the main chart view
+        end_time = timestamps[-1]
+        start_time = end_time - pd.to_timedelta(window_minutes, unit='m')
+        fig.update_xaxes(range=[start_time, end_time])
+    else:
+        # Free zoom/pan mode – do nothing; user controls it
+        fig.update_xaxes(fixedrange=False)
+
+    # Show the plot
     chart_placeholder.plotly_chart(fig, use_container_width=True)
 
-    # Control update frequency (2s is a good balance)
+    # Slow down the loop to avoid rate limits / freezing
     time.sleep(2)
