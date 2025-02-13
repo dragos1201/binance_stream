@@ -1,79 +1,69 @@
-import os
-import pandas as pd
 import streamlit as st
+import pandas as pd
+import time
+from datetime import datetime
 from supabase import create_client, Client
-import datetime
+import plotly.graph_objects as go
 
-# Supabase credentials (better to set these in Streamlit Secrets for production)
+# Supabase credentials (replace with your actual keys)
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-st.title('Real-Time Binance Trade Dashboard')
+st.title("Live Crypto Trade Stream")
 
-# Select coin
-selected_coin = st.selectbox('Select Coin Pair', ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'])
+# Select coin pair
+coin_pair = st.selectbox("Select Coin Pair", ["BTCUSDT", "ETHUSDT", "SOLUSDT"])
 
-# Initialize session state for data storage
-if 'trade_data' not in st.session_state:
-    st.session_state['trade_data'] = pd.DataFrame(
-        columns=['event_time', 'coin', 'price', 'quantity']
-    )
-if 'last_fetched_time' not in st.session_state:
-    st.session_state['last_fetched_time'] = int(
-        (datetime.datetime.now(datetime.UTC) - datetime.timedelta(minutes=15)).timestamp() * 1000
-    )
+# Container for the plot
+chart_placeholder = st.empty()
 
-# Fetch trades from Supabase after a certain timestamp
-def fetch_new_trades(since_ms):
+# Function to fetch latest data from Supabase
+def fetch_latest_data():
     response = (
-        supabase.table('trades')
-        .select('*')
-        .gt('event_time', since_ms)
-        .order('event_time')
+        supabase.table("trades")
+        .select("*")
+        .eq("coin", coin_pair)
+        .order("event_time", desc=True)
+        .limit(100)  # Load the last 100 trades
         .execute()
     )
-
     if response.data:
-        return pd.DataFrame(response.data)
-    return pd.DataFrame(columns=['event_time', 'coin', 'price', 'quantity'])
+        df = pd.DataFrame(response.data)
+        df["event_time"] = pd.to_datetime(df["event_time"], unit='ms')
+        return df.sort_values("event_time")
+    return pd.DataFrame(columns=["event_time", "price", "quantity"])
 
-# Fetch only new trades
-new_data = fetch_new_trades(st.session_state['last_fetched_time'])
+# Live-updating chart loop
+prices = []
+timestamps = []
 
-if not new_data.empty:
-    st.session_state['last_fetched_time'] = new_data['event_time'].max()
-    st.session_state['trade_data'] = pd.concat(
-        [st.session_state['trade_data'], new_data], ignore_index=True
+while True:
+    df = fetch_latest_data()
+
+    if not df.empty:
+        prices = df["price"].tolist()
+        timestamps = df["event_time"].tolist()
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Scatter(
+        x=timestamps,
+        y=prices,
+        mode='lines+markers',
+        name=coin_pair,
+        line=dict(color='royalblue', width=2)
+    ))
+
+    fig.update_layout(
+        title=f"Live Price Chart - {coin_pair}",
+        xaxis_title="Time",
+        yaxis_title="Price",
+        xaxis_tickformat="%H:%M:%S",
+        template="plotly_dark",
+        height=400
     )
 
-# Filter data for the selected coin
-coin_df = st.session_state['trade_data']
-coin_df = coin_df[coin_df['coin'] == selected_coin].copy()
+    chart_placeholder.plotly_chart(fig, use_container_width=True)
 
-if not coin_df.empty:
-    coin_df['event_time'] = pd.to_datetime(coin_df['event_time'], unit='ms')
-
-    st.line_chart(coin_df[['event_time', 'price']].set_index('event_time'))
-    st.bar_chart(coin_df[['event_time', 'quantity']].set_index('event_time'))
-
-    st.dataframe(coin_df.tail(10))
-else:
-    st.warning(f"No trade data available for {selected_coin}")
-
-# Auto-refresh frontend every 5 seconds using JavaScript
-st.write(
-    """
-    <script>
-    function reloadPage() {
-        setTimeout(function() {
-            window.location.reload();
-        }, 5000);
-    }
-    reloadPage();
-    </script>
-    """,
-    unsafe_allow_html=True
-)
-
-st.write("Refreshing every 5 seconds...")
+    time.sleep(2)  # Update every 2 seconds
