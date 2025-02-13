@@ -59,7 +59,7 @@ def fetch_new_data(since_timestamp):
         .select("*")
         .eq("coin", coin_pair)
         .gt("event_time", int(since_timestamp.timestamp() * 1000))  # Convert datetime to ms
-        .order("event_time", asc=True)
+        .order("event_time", desc=False)
         .execute()
     )
 
