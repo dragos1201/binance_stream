@@ -6,8 +6,8 @@ from supabase import create_client, Client
 import plotly.graph_objects as go
 
 # Supabase credentials (replace with your actual keys)
-SUPABASE_URL = "https://your-project.supabase.co"
-SUPABASE_KEY = "your_service_role_key"
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 st.title("Live Crypto Trade Stream")
