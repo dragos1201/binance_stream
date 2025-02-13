@@ -4,6 +4,7 @@ import time
 from datetime import datetime
 from supabase import create_client, Client
 import plotly.graph_objects as go
+import os
 
 # Supabase credentials (replace with your actual keys)
 SUPABASE_URL = os.getenv("SUPABASE_URL")
