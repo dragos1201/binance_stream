@@ -50,11 +50,6 @@ timestamps = full_data["event_time"].tolist()
 # Track the latest event_time for incremental updates
 latest_timestamp = full_data["event_time"].iloc[-1]
 
-# Store plot zoom/pan state in session state
-if "relayout_data" not in st.session_state:
-    st.session_state.relayout_data = None
-
-
 # ==============================
 # Step 2 - Continuously Fetch Only New Data
 # ==============================
@@ -64,7 +59,7 @@ def fetch_new_data(since_timestamp):
         .select("*")
         .eq("coin", coin_pair)
         .gt("event_time", int(since_timestamp.timestamp() * 1000))
-        .order("event_time", desc=False)
+        .order("event_time", asc=True)
         .execute()
     )
 
@@ -72,7 +67,6 @@ def fetch_new_data(since_timestamp):
     if not new_df.empty:
         new_df["event_time"] = pd.to_datetime(new_df["event_time"], unit='ms')
     return new_df
-
 
 # ==============================
 # Step 3 - Live Plotting
@@ -103,24 +97,20 @@ while True:
         title=f"Live Price Chart - {coin_pair}",
         xaxis_title="Time",
         yaxis_title="Price",
-        xaxis_tickformat="%H:%M:%S",
+        xaxis_rangeslider_visible=True,  # Enable x-axis scrolling
         template="plotly_dark",
         height=500,
-        xaxis_rangeslider_visible=True,  # Allow scroll and zoom for x-axis
+        hovermode="x unified",
     )
 
-    # Restore zoom/pan state if available
-    if st.session_state.relayout_data:
-        fig.update_layout(
-            xaxis_range=st.session_state.relayout_data.get("xaxis.range", None),
-            yaxis_range=st.session_state.relayout_data.get("yaxis.range", None)
-        )
+    # Allow free zooming on both axes
+    fig.update_layout(
+        xaxis=dict(fixedrange=False),  # Allow zoom/pan
+        yaxis=dict(fixedrange=False)   # Allow zoom/pan
+    )
 
-    # Display the chart and capture updated zoom/pan state
-    chart_event = chart_placeholder.plotly_chart(fig, use_container_width=True)
+    # Display chart without resetting zoom on every refresh
+    chart_placeholder.plotly_chart(fig, use_container_width=True)
 
-    # Capture the latest relayout data (user zoom/pan changes)
-    if chart_event is not None and chart_event.get("relayoutData"):
-        st.session_state.relayout_data = chart_event["relayoutData"]
-
+    # Control update frequency (2s is a good balance)
     time.sleep(2)
