@@ -23,7 +23,7 @@ chart_placeholder = st.empty()
 # ==============================
 # Step 1 - Load FULL Historical Data Once
 # ==============================
-@st.cache_data(ttl=300)  # Cache the initial load to reduce database load
+@st.cache_data(ttl=300)
 def load_full_data(coin):
     response = (
         supabase.table("trades")
@@ -50,6 +50,11 @@ timestamps = full_data["event_time"].tolist()
 # Track the latest event_time for incremental updates
 latest_timestamp = full_data["event_time"].iloc[-1]
 
+# Store plot zoom/pan state in session state
+if "relayout_data" not in st.session_state:
+    st.session_state.relayout_data = None
+
+
 # ==============================
 # Step 2 - Continuously Fetch Only New Data
 # ==============================
@@ -58,7 +63,7 @@ def fetch_new_data(since_timestamp):
         supabase.table("trades")
         .select("*")
         .eq("coin", coin_pair)
-        .gt("event_time", int(since_timestamp.timestamp() * 1000))  # Convert datetime to ms
+        .gt("event_time", int(since_timestamp.timestamp() * 1000))
         .order("event_time", desc=False)
         .execute()
     )
@@ -84,33 +89,38 @@ while True:
         # Update latest timestamp
         latest_timestamp = new_data["event_time"].iloc[-1]
 
-    # Plot all data with stable Y-Axis range (±20% of median price)
-    if prices:
-        median_price = pd.Series(prices[-500:]).median()  # Consider last 500 points for median
-        y_min = median_price * 0.8  # -20%
-        y_max = median_price * 1.2  # +20%
+    # Build Plotly chart
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=timestamps,
+        y=prices,
+        mode='lines',
+        name=coin_pair,
+        line=dict(color='royalblue', width=2)
+    ))
 
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=timestamps,
-            y=prices,
-            mode='lines',
-            name=coin_pair,
-            line=dict(color='royalblue', width=2)
-        ))
+    fig.update_layout(
+        title=f"Live Price Chart - {coin_pair}",
+        xaxis_title="Time",
+        yaxis_title="Price",
+        xaxis_tickformat="%H:%M:%S",
+        template="plotly_dark",
+        height=500,
+        xaxis_rangeslider_visible=True,  # Allow scroll and zoom for x-axis
+    )
 
+    # Restore zoom/pan state if available
+    if st.session_state.relayout_data:
         fig.update_layout(
-            title=f"Live Price Chart - {coin_pair}",
-            xaxis_title="Time",
-            yaxis_title="Price",
-            xaxis_tickformat="%H:%M:%S",
-            template="plotly_dark",
-            height=500,
-            yaxis=dict(range=[y_min, y_max]),
-            xaxis_rangeslider_visible=True  # Allow zoom and scroll
+            xaxis_range=st.session_state.relayout_data.get("xaxis.range", None),
+            yaxis_range=st.session_state.relayout_data.get("yaxis.range", None)
         )
 
-        chart_placeholder.plotly_chart(fig, use_container_width=True)
+    # Display the chart and capture updated zoom/pan state
+    chart_event = chart_placeholder.plotly_chart(fig, use_container_width=True)
 
-    # Control the refresh rate
-    time.sleep(1)
+    # Capture the latest relayout data (user zoom/pan changes)
+    if chart_event is not None and chart_event.get("relayoutData"):
+        st.session_state.relayout_data = chart_event["relayoutData"]
+
+    time.sleep(2)
