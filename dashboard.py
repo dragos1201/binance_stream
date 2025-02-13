@@ -6,7 +6,9 @@ from supabase import create_client, Client
 import plotly.graph_objects as go
 import os
 
-# Supabase credentials (replace with your actual keys)
+# ==============================
+# Supabase Setup
+# ==============================
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -21,7 +23,6 @@ chart_placeholder = st.empty()
 # ==============================
 # Step 1 - Load FULL Historical Data Once
 # ==============================
-
 @st.cache_data(ttl=300)  # Cache the initial load to reduce database load
 def load_full_data(coin):
     response = (
@@ -52,14 +53,13 @@ latest_timestamp = full_data["event_time"].iloc[-1]
 # ==============================
 # Step 2 - Continuously Fetch Only New Data
 # ==============================
-
 def fetch_new_data(since_timestamp):
     response = (
         supabase.table("trades")
         .select("*")
         .eq("coin", coin_pair)
         .gt("event_time", int(since_timestamp.timestamp() * 1000))  # Convert datetime to ms
-        .order("event_time", desc=False)
+        .order("event_time", asc=True)
         .execute()
     )
 
@@ -84,17 +84,17 @@ while True:
         # Update latest timestamp
         latest_timestamp = new_data["event_time"].iloc[-1]
 
-    # Y-Axis Stability: Set range around median price to prevent "crazy scaling"
+    # Plot all data with stable Y-Axis range (±20% of median price)
     if prices:
-        median_price = pd.Series(prices[-200:]).median()  # Consider last 200 points
-        y_min = median_price * 0.995  # -0.5%
-        y_max = median_price * 1.005  # +0.5%
+        median_price = pd.Series(prices[-500:]).median()  # Consider last 500 points for median
+        y_min = median_price * 0.8  # -20%
+        y_max = median_price * 1.2  # +20%
 
         fig = go.Figure()
         fig.add_trace(go.Scatter(
             x=timestamps,
             y=prices,
-            mode='lines+markers',
+            mode='lines',
             name=coin_pair,
             line=dict(color='royalblue', width=2)
         ))
@@ -106,9 +106,11 @@ while True:
             xaxis_tickformat="%H:%M:%S",
             template="plotly_dark",
             height=500,
-            yaxis=dict(range=[y_min, y_max])  # Stable y-axis
+            yaxis=dict(range=[y_min, y_max]),
+            xaxis_rangeslider_visible=True  # Allow zoom and scroll
         )
 
         chart_placeholder.plotly_chart(fig, use_container_width=True)
 
-    time.sleep(2)  # Adjust refresh rate
+    # Control the refresh rate
+    time.sleep(2)
